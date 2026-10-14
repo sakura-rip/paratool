@@ -1,7 +1,7 @@
 import AppKit
 
 public enum AnnotationTool: String, CaseIterable {
-    case select, rectangle, ellipse, arrow, pen, text, redact
+    case select, rectangle, ellipse, arrow, pen, text, highlight, mosaic, tag, redact
     public var title: String {
         switch self {
         case .select: return "選択"
@@ -10,6 +10,9 @@ public enum AnnotationTool: String, CaseIterable {
         case .arrow: return "矢印"
         case .pen: return "ペン"
         case .text: return "文字"
+        case .highlight: return "ハイライト"
+        case .mosaic: return "モザイク"
+        case .tag: return "タグ"
         case .redact: return "目隠し"
         }
     }
@@ -21,6 +24,9 @@ public enum AnnotationTool: String, CaseIterable {
         case .arrow: return "arrow.up.right"
         case .pen: return "pencil.tip"
         case .text: return "textformat"
+        case .highlight: return "highlighter"
+        case .mosaic: return "square.grid.3x3.fill"
+        case .tag: return "tag"
         case .redact: return "rectangle.fill"
         }
     }
@@ -58,6 +64,10 @@ public struct Annotation: Identifiable, Equatable {
     public var font: NSFont { .systemFont(ofSize: max(16, width * 6), weight: .semibold) }
     public var bounds: CGRect {
         guard let first = points.first else { return .zero }
+        if tool == .tag {
+            let diameter = max(28, width * 10)
+            return CGRect(origin: first, size: CGSize(width: diameter, height: diameter))
+        }
         if tool == .text {
             let size = (text as NSString).size(withAttributes: [.font: font])
             return CGRect(origin: first, size: size)
@@ -71,7 +81,7 @@ public struct Annotation: Identifiable, Equatable {
         return result
     }
     public func hitTest(_ point: CGPoint, tolerance: CGFloat) -> Bool {
-        if tool == .text || tool == .redact { return bounds.insetBy(dx: -tolerance, dy: -tolerance).contains(point) }
+        if [.text, .redact, .highlight, .mosaic, .tag].contains(tool) { return bounds.insetBy(dx: -tolerance, dy: -tolerance).contains(point) }
         if tool == .rectangle {
             return bounds.insetBy(dx: -tolerance, dy: -tolerance).contains(point) && !bounds.insetBy(dx: tolerance, dy: tolerance).contains(point)
         }

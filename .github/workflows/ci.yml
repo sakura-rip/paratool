@@ -34,7 +34,7 @@ jobs:
         run: ./scripts/test.sh
       - name: Build app and ZIP
         env:
-          APP_VERSION: 0.1.0
+          APP_VERSION: 0.2.0
           APP_BUILD: ${{ github.run_number }}
           EXPECTED_ARCH: ${{ matrix.arch }}
         run: ./scripts/package-release.sh

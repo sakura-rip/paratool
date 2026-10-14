@@ -2,7 +2,7 @@ import AppKit
 
 public enum ImageRenderer {
     // Shared by the flipped canvas and export; annotation coordinates start at top-left.
-    public static func draw(_ annotations: [Annotation]) {
+    public static func draw(_ annotations: [Annotation], base: CGImage? = nil) {
         for mark in annotations {
             guard let first = mark.points.first else { continue }
             NSGraphicsContext.saveGraphicsState()
@@ -16,7 +16,15 @@ public enum ImageRenderer {
             case .select: break
             case .rectangle: path.appendRect(mark.bounds); path.stroke()
             case .ellipse: path.appendOval(in: mark.bounds); path.stroke()
-            case .redact: path.appendRect(mark.bounds); path.fill()
+            case .redact, .highlight: path.appendRect(mark.bounds); path.fill()
+            case .mosaic:
+                if let base { drawMosaic(base: base, bounds: mark.bounds, blockSize: max(12, mark.width * 4)) }
+            case .tag:
+                path.appendOval(in: mark.bounds); path.fill()
+                let textColor: NSColor = mark.color.red * 0.299 + mark.color.green * 0.587 + mark.color.blue * 0.114 > 0.65 ? .black : .white
+                let attributes: [NSAttributedString.Key: Any] = [.font: mark.font, .foregroundColor: textColor]
+                let size = (mark.text as NSString).size(withAttributes: attributes)
+                (mark.text as NSString).draw(at: CGPoint(x: mark.bounds.midX - size.width / 2, y: mark.bounds.midY - size.height / 2), withAttributes: attributes)
             case .pen:
                 path.move(to: first)
                 for p in mark.points.dropFirst() { path.line(to: p) }
@@ -38,6 +46,20 @@ public enum ImageRenderer {
         }
     }
 
+
+    private static func drawMosaic(base: CGImage, bounds: CGRect, blockSize: CGFloat) {
+        let rect = bounds.integral.intersection(CGRect(x: 0, y: 0, width: base.width, height: base.height))
+        guard !rect.isEmpty, let cropped = base.cropping(to: rect) else { return }
+        let width = max(1, Int(ceil(rect.width / blockSize)))
+        let height = max(1, Int(ceil(rect.height / blockSize)))
+        guard let small = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
+        small.interpolationQuality = .high
+        small.draw(cropped, in: CGRect(x: 0, y: 0, width: width, height: height))
+        guard let pixels = small.makeImage() else { return }
+        NSGraphicsContext.current?.imageInterpolation = .none
+        NSImage(cgImage: pixels, size: NSSize(width: width, height: height)).draw(in: rect, from: .zero, operation: .copy, fraction: 1, respectFlipped: true, hints: [.interpolation: NSImageInterpolation.none])
+    }
+
     public static func render(base: CGImage, annotations: [Annotation]) -> CGImage? {
         guard let context = CGContext(data: nil, width: base.width, height: base.height, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
         let rect = CGRect(x: 0, y: 0, width: base.width, height: base.height)
@@ -46,7 +68,7 @@ public enum ImageRenderer {
         context.scaleBy(x: 1, y: -1)
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
-        draw(annotations)
+        draw(annotations, base: base)
         NSGraphicsContext.restoreGraphicsState()
         return context.makeImage()
     }

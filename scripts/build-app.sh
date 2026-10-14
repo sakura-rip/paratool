@@ -1,7 +1,7 @@
 #!/bin/zsh
 set -euo pipefail
 cd "${0:A:h}/.."
-version="${APP_VERSION:-0.1.0}"
+version="${APP_VERSION:-0.2.0}"
 build_number="${APP_BUILD:-1}"
 if [[ ! "$version" =~ '^[0-9]+\.[0-9]+\.[0-9]+$' || ! "$build_number" =~ '^[0-9]+$' ]]; then
   print -u2 'APP_VERSION must be X.Y.Z and APP_BUILD must be an integer.'
@@ -21,7 +21,7 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 <key>CFBundleIdentifier</key><string>app.paratool.mac</string>
 <key>CFBundleExecutable</key><string>Paratool</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.1.0</string>
+<key>CFBundleShortVersionString</key><string>0.2.0</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>LSUIElement</key><true/>

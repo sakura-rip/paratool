@@ -52,11 +52,57 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(output.width, 100)
         XCTAssertEqual(output.height, 80)
         let bitmap = NSBitmapImageRep(cgImage: output)
-        // Assert encoded RGBA bytes; NSColor conversion can apply display/HDR transforms.
-        var pixel = [UInt](repeating: 0, count: 4)
-        bitmap.getPixel(&pixel, atX: 20, y: 20)
-        XCTAssertEqual(pixel, [255, 0, 0, 255])
-        bitmap.getPixel(&pixel, atX: 20, y: 60)
-        XCTAssertEqual(pixel[3], 0, "Redaction must use top-left image coordinates")
+        // Read bytes directly: getPixel's imported Int/UInt type differs by SDK.
+        let bytes = try XCTUnwrap(bitmap.bitmapData)
+        let offset = 20 * bitmap.bytesPerRow + 20 * bitmap.samplesPerPixel
+        XCTAssertEqual(Array(UnsafeBufferPointer(start: bytes + offset, count: 4)), [255, 0, 0, 255])
+        XCTAssertEqual(bytes[60 * bitmap.bytesPerRow + 20 * bitmap.samplesPerPixel + 3], 0)
+    }
+
+    func testClipboardIgnoresBaselineRepeatedAndOwnCopies() {
+        var tracker = ClipboardTracker(initialChangeCount: 10)
+        XCTAssertFalse(tracker.shouldImport(changeCount: 10, hasImage: true, isOwnExport: false))
+        XCTAssertFalse(tracker.shouldImport(changeCount: 11, hasImage: false, isOwnExport: false))
+        XCTAssertTrue(tracker.shouldImport(changeCount: 12, hasImage: true, isOwnExport: false))
+        XCTAssertFalse(tracker.shouldImport(changeCount: 12, hasImage: true, isOwnExport: false))
+        XCTAssertFalse(tracker.shouldImport(changeCount: 13, hasImage: true, isOwnExport: true))
+        XCTAssertTrue(tracker.shouldImport(changeCount: 14, hasImage: true, isOwnExport: false))
+    }
+
+    func testHighlightCompositesWithOpacity() throws {
+        let context = CGContext(data: nil, width: 60, height: 60, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 60, height: 60))
+        let mark = Annotation(tool: .highlight, points: [CGPoint(x: 10, y: 10), CGPoint(x: 50, y: 50)], color: .init(red: 1, green: 0, blue: 0, alpha: 0.5))
+        let output = try XCTUnwrap(ImageRenderer.render(base: context.makeImage()!, annotations: [mark]))
+        let bitmap = NSBitmapImageRep(cgImage: output)
+        let pixel = try XCTUnwrap(bitmap.bitmapData) + 20 * bitmap.bytesPerRow + 20 * 4
+        XCTAssertEqual(pixel[0], 255)
+        XCTAssertTrue((125...129).contains(Int(pixel[1])))
+        XCTAssertTrue((125...129).contains(Int(pixel[2])))
+        XCTAssertEqual(pixel[3], 255)
+    }
+
+    func testMosaicRemovesFineDetailAndPreservesOutside() throws {
+        let context = CGContext(data: nil, width: 64, height: 64, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        for x in 0..<64 {
+            context.setFillColor(CGColor(gray: x.isMultiple(of: 2) ? 1 : 0, alpha: 1))
+            context.fill(CGRect(x: x, y: 0, width: 1, height: 64))
+        }
+        let mark = Annotation(tool: .mosaic, points: [CGPoint(x: 16, y: 16), CGPoint(x: 48, y: 48)], width: 4)
+        let output = try XCTUnwrap(ImageRenderer.render(base: context.makeImage()!, annotations: [mark]))
+        let bitmap = NSBitmapImageRep(cgImage: output)
+        let bytes = try XCTUnwrap(bitmap.bitmapData)
+        let a = 20 * bitmap.bytesPerRow + 20 * 4
+        let b = 20 * bitmap.bytesPerRow + 21 * 4
+        XCTAssertEqual(bytes[a], bytes[b], "Adjacent stripes must become one mosaic block")
+        XCTAssertNotEqual(bytes[4 * 4], bytes[5 * 4], "Outside the selection must remain unchanged")
+    }
+
+    func testTagHasVisibleBoundsAndCanBeSelected() {
+        let tag = Annotation(tool: .tag, points: [CGPoint(x: 20, y: 30)], text: "1")
+        XCTAssertGreaterThan(tag.bounds.width, 20)
+        XCTAssertTrue(tag.hitTest(CGPoint(x: tag.bounds.midX, y: tag.bounds.midY), tolerance: 3))
+        XCTAssertFalse(tag.hitTest(CGPoint(x: 400, y: 400), tolerance: 3))
     }
 }

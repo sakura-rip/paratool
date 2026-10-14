@@ -8,7 +8,7 @@ if [[ -n "${EXPECTED_ARCH:-}" && "$arch" != "$EXPECTED_ARCH" ]]; then
   exit 1
 fi
 lipo dist/Paratool.app/Contents/MacOS/Paratool -verify_arch "$arch"
-version="${APP_VERSION:-0.1.0}"
+version="${APP_VERSION:-0.2.0}"
 archive="$PWD/dist/Paratool-${version}-macos-${arch}.zip"
 # ditto preserves the executable bit, bundle structure, and macOS metadata.
 ditto -c -k --sequesterRsrc --keepParent dist/Paratool.app "$archive"

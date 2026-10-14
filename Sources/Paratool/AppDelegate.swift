@@ -6,6 +6,7 @@ import ParatoolCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private let watcher = CaptureWatcher()
+    private let clipboardWatcher = ClipboardWatcher()
     let shelf = ShelfController()
     private var history = RecentItems<Capture>()
     private var editors: [UUID: EditorController] = [:]
@@ -33,6 +34,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             rebuildMenu()
             return
         }
+        clipboardWatcher.onCapture = { [weak self] image in
+            let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM-dd-HHmmss-SSS"
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("Clipboard-\(formatter.string(from: Date())).png")
+            self?.addCapture(url: url, image: image)
+        }
+        clipboardWatcher.start()
         refreshFolder()
         preferenceTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in self?.refreshFolder() }
         if !UserDefaults.standard.bool(forKey: "hasSeenWelcome") { showWelcome(nil) }
@@ -46,6 +53,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for (title, selector, key) in [("カット", #selector(NSText.cut(_:)), "x"), ("コピー", #selector(NSText.copy(_:)), "c"), ("ペースト", #selector(NSText.paste(_:)), "v"), ("すべて選択", #selector(NSText.selectAll(_:)), "a")] {
             editMenu.addItem(NSMenuItem(title: title, action: selector, keyEquivalent: key))
         }
+        let undo = NSMenuItem(title: "元に戻す", action: Selector(("undo:")), keyEquivalent: "z")
+        let redo = NSMenuItem(title: "やり直す", action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(undo); editMenu.addItem(redo)
         edit.submenu = editMenu; menu.addItem(edit); NSApp.mainMenu = menu
     }
     private func refreshFolder() {
@@ -60,7 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.autoenablesItems = false
         let title = NSMenuItem(title: "Paratool  /  \(history.items.count) 枚", action: nil, keyEquivalent: "")
         title.isEnabled = false; menu.addItem(title)
-        let state = NSMenuItem(title: statusMessage ?? "⌘⇧4 で撮影すると左下に表示", action: nil, keyEquivalent: "")
+        let state = NSMenuItem(title: statusMessage ?? "⌘⇧4 / Ctrl付きコピーも左下に表示", action: nil, keyEquivalent: "")
         state.isEnabled = false; menu.addItem(state)
         menu.addItem(.separator())
         addMenu("最新のスクショを編集", #selector(openLatest), to: menu, enabled: !history.items.isEmpty)
@@ -142,7 +153,7 @@ private struct WelcomeView: View {
                 Text("いつものスクショに、ひと手間だけ。").foregroundStyle(.secondary)
             }
             VStack(alignment: .leading, spacing: 16) {
-                step("1", "⌘ ⇧ 4 でスクショ", "普段と同じ操作で、撮りたい範囲を選択。")
+                step("1", "⌘ ⇧ 4 でスクショ", "Ctrlを押しながらのクリップボード保存にも対応。")
                 step("2", "左下に、最新3枚をキープ", "クリックで編集。古い画像も元ファイルは残ります。")
                 step("3", "注釈を入れて、完了してコピー", "矢印・文字・目隠しで、伝えたいことをはっきり。")
             }

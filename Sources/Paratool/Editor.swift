@@ -20,6 +20,7 @@ final class EditorController: NSWindowController, NSWindowDelegate {
     private var undoButton = NSButton()
     private var redoButton = NSButton()
     private var fitMode = true
+    private let opacityControl = NSPopUpButton(frame: .zero, pullsDown: false)
     var onClose: (() -> Void)?
     var onExport: ((URL) -> Void)?
 
@@ -29,7 +30,7 @@ final class EditorController: NSWindowController, NSWindowDelegate {
         let window = EditorWindow(contentRect: NSRect(x: 0, y: 0, width: 1080, height: 760), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         super.init(window: window)
         window.title = "Paratool — \(capture.url.lastPathComponent)"
-        window.minSize = NSSize(width: 850, height: 440)
+        window.minSize = NSSize(width: 940, height: 480)
         window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = NSColor(calibratedWhite: 0.11, alpha: 1)
         window.isReleasedWhenClosed = false
@@ -41,19 +42,20 @@ final class EditorController: NSWindowController, NSWindowDelegate {
         buildUI()
         window.shortcut = { [weak self] event in self?.handleShortcut(event) ?? false }
         canvas.onChange = { [weak self] in self?.refresh() }
-        canvas.onText = { [weak self] p in self?.addText(at: p) }
         refresh()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     private func button(_ title: String = "", symbol: String? = nil, action: Selector, help: String) -> NSButton {
         let b = NSButton(title: title, target: self, action: action)
-        b.bezelStyle = .texturedRounded
-        b.font = .systemFont(ofSize: 12, weight: .medium)
+        b.bezelStyle = .rounded
+        b.controlSize = .large
+        b.font = .systemFont(ofSize: 14, weight: .semibold)
         b.toolTip = help
         if let symbol { b.image = NSImage(systemSymbolName: symbol, accessibilityDescription: help); b.imagePosition = title.isEmpty ? .imageOnly : .imageLeading }
-        b.heightAnchor.constraint(equalToConstant: 30).isActive = true
-        if title.isEmpty { b.widthAnchor.constraint(equalToConstant: 34).isActive = true }
+        b.heightAnchor.constraint(equalToConstant: 40).isActive = true
+        b.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 18, weight: .medium)
+        if title.isEmpty { b.widthAnchor.constraint(equalToConstant: 40).isActive = true }
         return b
     }
     private func spacer() -> NSView {
@@ -66,47 +68,49 @@ final class EditorController: NSWindowController, NSWindowDelegate {
         content.wantsLayer = true
         content.layer?.backgroundColor = NSColor(srgbRed: 0.16, green: 0.17, blue: 0.19, alpha: 1).cgColor
         let colors = NSStackView(); colors.spacing = 8; colors.orientation = .horizontal
-        let label = NSTextField(labelWithString: "スタイル")
-        label.font = .systemFont(ofSize: 10, weight: .semibold); label.textColor = .secondaryLabelColor
-        colors.addArrangedSubview(label)
         for (index, ink) in InkColor.palette.enumerated() {
             let b = NSButton(title: "", target: self, action: #selector(selectColor(_:)))
             b.tag = index; b.isBordered = false; b.wantsLayer = true
-            b.layer?.backgroundColor = ink.nsColor.cgColor
-            b.layer?.cornerRadius = 4
-            b.widthAnchor.constraint(equalToConstant: 22).isActive = true
-            b.heightAnchor.constraint(equalToConstant: 22).isActive = true
+            b.layer?.backgroundColor = ink.nsColor.cgColor; b.layer?.cornerRadius = 5
+            b.widthAnchor.constraint(equalToConstant: 26).isActive = true
+            b.heightAnchor.constraint(equalToConstant: 26).isActive = true
             b.toolTip = ["赤", "黄", "緑", "青", "黒", "白"][index]
             colorButtons.append(b); colors.addArrangedSubview(b)
         }
         let width = NSPopUpButton(frame: .zero, pullsDown: false)
-        width.addItems(withTitles: ["細い · 2 px", "標準 · 4 px", "太い · 8 px", "極太 · 12 px"])
-        width.selectItem(at: 1); width.target = self; width.action = #selector(selectWidth(_:)); width.toolTip = "線幅 / 文字サイズ"
+        width.addItems(withTitles: ["線幅 · 2 px", "線幅 · 4 px", "線幅 · 8 px", "線幅 · 12 px"])
+        width.font = .systemFont(ofSize: 13); width.controlSize = .large
+        width.selectItem(at: 1); width.target = self; width.action = #selector(selectWidth(_:)); width.toolTip = "線幅 / 文字サイズ / モザイクの粗さ"
         colors.addArrangedSubview(width)
+        opacityControl.addItems(withTitles: ["不透明度 25%", "不透明度 50%", "不透明度 75%", "不透明度 100%"])
+        opacityControl.font = .systemFont(ofSize: 13); opacityControl.controlSize = .large
+        opacityControl.selectItem(at: 3); opacityControl.target = self; opacityControl.action = #selector(selectOpacity(_:))
+        colors.addArrangedSubview(opacityControl)
         colors.addArrangedSubview(spacer())
-        let hint = NSTextField(labelWithString: "描いて、コピーして、そのまま共有。")
-        hint.font = .systemFont(ofSize: 11); hint.textColor = .secondaryLabelColor
-        colors.addArrangedSubview(hint)
+        colors.addArrangedSubview(button(symbol: "minus.magnifyingglass", action: #selector(zoomOut), help: "縮小（⌘−）"))
+        zoomLabel.font = .monospacedDigitSystemFont(ofSize: 14, weight: .medium)
+        zoomLabel.alignment = .center; zoomLabel.widthAnchor.constraint(equalToConstant: 52).isActive = true
+        colors.addArrangedSubview(zoomLabel)
+        colors.addArrangedSubview(button(symbol: "plus.magnifyingglass", action: #selector(zoomIn), help: "拡大（⌘＋）"))
+        colors.addArrangedSubview(button(symbol: "arrow.up.left.and.arrow.down.right", action: #selector(fit), help: "全体表示（⌘0）"))
+        undoButton = button(symbol: "arrow.uturn.backward", action: #selector(undoEdit), help: "元に戻す（⌘Z）")
+        redoButton = button(symbol: "arrow.uturn.forward", action: #selector(redoEdit), help: "やり直す（⇧⌘Z）")
+        colors.addArrangedSubview(undoButton); colors.addArrangedSubview(redoButton)
+        colors.addArrangedSubview(button(symbol: "trash", action: #selector(deleteMark), help: "選択した注釈を削除"))
 
-        let tools = NSStackView(); tools.orientation = .horizontal; tools.spacing = 6
-        tools.addArrangedSubview(button(symbol: "minus.magnifyingglass", action: #selector(zoomOut), help: "縮小（⌘−）"))
-        zoomLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
-        zoomLabel.alignment = .center; zoomLabel.widthAnchor.constraint(equalToConstant: 46).isActive = true
-        tools.addArrangedSubview(zoomLabel)
-        tools.addArrangedSubview(button(symbol: "plus.magnifyingglass", action: #selector(zoomIn), help: "拡大（⌘＋）"))
-        tools.addArrangedSubview(button(symbol: "arrow.up.left.and.arrow.down.right", action: #selector(fit), help: "全体表示（⌘0）"))
+        let tools = NSStackView(); tools.orientation = .horizontal; tools.spacing = 8
         for (index, tool) in AnnotationTool.allCases.enumerated() {
             let b = button(symbol: tool.symbol, action: #selector(selectTool(_:)), help: tool.title)
             b.tag = index; b.setButtonType(.pushOnPushOff)
             toolButtons.append(b); tools.addArrangedSubview(b)
         }
-        undoButton = button(symbol: "arrow.uturn.backward", action: #selector(undoEdit), help: "元に戻す（⌘Z）")
-        redoButton = button(symbol: "arrow.uturn.forward", action: #selector(redoEdit), help: "やり直す（⇧⌘Z）")
-        tools.addArrangedSubview(undoButton); tools.addArrangedSubview(redoButton)
-        tools.addArrangedSubview(button(symbol: "trash", action: #selector(deleteMark), help: "選択した注釈を削除"))
         tools.addArrangedSubview(spacer())
-        tools.addArrangedSubview(button("保存", symbol: "square.and.arrow.down", action: #selector(savePNG), help: "PNG保存（⌘S）"))
-        let copy = button("完了してコピー", action: #selector(copyAndClose), help: "画像をコピーして閉じる（⌘Return）")
+        let close = button("閉じる", symbol: "xmark", action: #selector(closeEditor), help: "編集画面を閉じる（⌘W）")
+        close.widthAnchor.constraint(equalToConstant: 96).isActive = true; tools.addArrangedSubview(close)
+        let save = button("保存", symbol: "square.and.arrow.down", action: #selector(savePNG), help: "PNG保存（⌘S）")
+        save.widthAnchor.constraint(equalToConstant: 98).isActive = true; tools.addArrangedSubview(save)
+        let copy = button("完了してコピー", symbol: "doc.on.doc", action: #selector(copyAndClose), help: "画像をコピーして閉じる（⌘Return）")
+        copy.widthAnchor.constraint(equalToConstant: 180).isActive = true
         copy.bezelColor = NSColor(srgbRed: 0.30, green: 0.42, blue: 0.94, alpha: 1)
         tools.addArrangedSubview(copy)
 
@@ -114,17 +118,17 @@ final class EditorController: NSWindowController, NSWindowDelegate {
         scroll.autohidesScrollers = true; scroll.borderType = .noBorder
         scroll.drawsBackground = true; scroll.backgroundColor = NSColor(calibratedWhite: 0.085, alpha: 1)
         scroll.documentView = canvas
-        let footer = NSTextField(labelWithString: "\(capture.image.width) × \(capture.image.height) px    •    元画像は変更されません       選択ツールで移動 / Deleteで削除")
-        footer.font = .systemFont(ofSize: 10); footer.textColor = .secondaryLabelColor
+        let footer = NSTextField(labelWithString: "\(capture.image.width) × \(capture.image.height) px    ·    文字はクリックして直接入力 / Enterで確定 / ダブルクリックで再編集")
+        footer.font = .systemFont(ofSize: 12); footer.textColor = .secondaryLabelColor
         for view in [colors, tools, scroll, footer] { view.translatesAutoresizingMaskIntoConstraints = false; content.addSubview(view) }
         NSLayoutConstraint.activate([
             colors.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16), colors.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
-            colors.topAnchor.constraint(equalTo: content.topAnchor, constant: 10), colors.heightAnchor.constraint(equalToConstant: 30),
-            tools.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12), tools.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
-            tools.topAnchor.constraint(equalTo: colors.bottomAnchor, constant: 8), tools.heightAnchor.constraint(equalToConstant: 36),
-            scroll.topAnchor.constraint(equalTo: tools.bottomAnchor, constant: 10), scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            scroll.bottomAnchor.constraint(equalTo: footer.topAnchor, constant: -8),
-            footer.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16), footer.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -8)
+            colors.topAnchor.constraint(equalTo: content.topAnchor, constant: 12), colors.heightAnchor.constraint(equalToConstant: 40),
+            tools.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16), tools.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
+            tools.topAnchor.constraint(equalTo: colors.bottomAnchor, constant: 10), tools.heightAnchor.constraint(equalToConstant: 44),
+            scroll.topAnchor.constraint(equalTo: tools.bottomAnchor, constant: 12), scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            scroll.bottomAnchor.constraint(equalTo: footer.topAnchor, constant: -10),
+            footer.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16), footer.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -10)
         ])
     }
     override func showWindow(_ sender: Any?) {
@@ -143,58 +147,64 @@ final class EditorController: NSWindowController, NSWindowDelegate {
         zoomLabel.stringValue = "\(Int((canvas.scale * 100).rounded()))%"
         canvas.needsDisplay = true
     }
-    func windowDidResize(_ notification: Notification) { updateCanvas() }
-    func windowWillClose(_ notification: Notification) { onClose?() }
+    func windowDidResize(_ notification: Notification) { canvas.finishText(); updateCanvas() }
+    func windowWillClose(_ notification: Notification) { canvas.finishText(); onClose?() }
     private func refresh() {
         for (index, b) in toolButtons.enumerated() {
             let selected = AnnotationTool.allCases[index] == canvas.tool
-            b.state = selected ? .on : .off; b.contentTintColor = selected ? .systemBlue : .labelColor
+            b.state = selected ? .on : .off; b.bezelColor = selected ? .systemIndigo : nil; b.contentTintColor = .labelColor
         }
         for (index, b) in colorButtons.enumerated() {
-            b.layer?.borderWidth = canvas.ink == InkColor.palette[index] ? 2 : 0
+            let color = InkColor.palette[index]
+            b.layer?.borderWidth = canvas.ink.red == color.red && canvas.ink.green == color.green && canvas.ink.blue == color.blue ? 2 : 0
             b.layer?.borderColor = NSColor.white.cgColor
         }
         undoButton.isEnabled = capture.document.canUndo; redoButton.isEnabled = capture.document.canRedo
         canvas.needsDisplay = true
     }
-    @objc private func selectTool(_ sender: NSButton) { canvas.tool = AnnotationTool.allCases[sender.tag]; refresh() }
-    @objc private func selectColor(_ sender: NSButton) { canvas.ink = InkColor.palette[sender.tag]; restyleSelection(); refresh() }
-    @objc private func selectWidth(_ sender: NSPopUpButton) { canvas.lineWidth = [2, 4, 8, 12][sender.indexOfSelectedItem]; restyleSelection() }
-    private func restyleSelection() {
+    @objc private func selectTool(_ sender: NSButton) {
+        let previous = canvas.tool
+        canvas.tool = AnnotationTool.allCases[sender.tag]
+        if canvas.tool == .highlight { canvas.ink = InkColor.palette[1]; canvas.ink.alpha = 0.5; opacityControl.selectItem(at: 1) }
+        else if previous == .highlight { canvas.ink.alpha = 1; opacityControl.selectItem(at: 3) }
+        refresh()
+    }
+    @objc private func selectColor(_ sender: NSButton) {
+        canvas.finishText()
+        let alpha = canvas.ink.alpha; canvas.ink = InkColor.palette[sender.tag]; canvas.ink.alpha = alpha
+        restyleSelection(); refresh()
+    }
+    @objc private func selectOpacity(_ sender: NSPopUpButton) {
+        canvas.finishText(); canvas.ink.alpha = [0.25, 0.5, 0.75, 1][sender.indexOfSelectedItem]; restyleSelection(); refresh()
+    }
+    @objc private func selectWidth(_ sender: NSPopUpButton) { canvas.finishText(); canvas.lineWidth = [2, 4, 8, 12][sender.indexOfSelectedItem]; restyleSelection(changeColor: false, changeWidth: true) }
+    private func restyleSelection(changeColor: Bool = true, changeWidth: Bool = false) {
         guard let id = canvas.selectedID, let index = capture.document.annotations.firstIndex(where: { $0.id == id }) else { return }
         var marks = capture.document.annotations
-        marks[index].color = canvas.ink; marks[index].width = canvas.lineWidth
+        if changeColor { marks[index].color = canvas.ink }
+        if changeWidth { marks[index].width = canvas.lineWidth }
         capture.document.commit(marks); refresh()
     }
-    @objc private func undoEdit() { capture.document.undo(); canvas.selectedID = nil; refresh() }
-    @objc private func redoEdit() { capture.document.redo(); canvas.selectedID = nil; refresh() }
+    @objc private func undoEdit() { canvas.finishText(); capture.document.undo(); canvas.selectedID = nil; refresh() }
+    @objc private func redoEdit() { canvas.finishText(); capture.document.redo(); canvas.selectedID = nil; refresh() }
     @objc private func deleteMark() { canvas.deleteSelection() }
-    @objc private func fit() { fitMode = true; updateCanvas() }
-    @objc private func zoomIn() { fitMode = false; canvas.scale = min(4, canvas.scale * 1.25); updateCanvas() }
-    @objc private func zoomOut() { fitMode = false; canvas.scale = max(0.02, canvas.scale / 1.25); updateCanvas() }
-    private func addText(at point: CGPoint) {
-        guard let window else { return }
-        let alert = NSAlert(); alert.messageText = "文字を追加"; alert.informativeText = "画像に入れる文字を入力してください。"
-        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 360, height: 28)); input.placeholderString = "ここに注釈を入力"
-        alert.accessoryView = input; alert.addButton(withTitle: "追加"); alert.addButton(withTitle: "キャンセル")
-        alert.beginSheetModal(for: window) { [weak self] result in
-            guard let self, result == .alertFirstButtonReturn, !input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-            let mark = Annotation(tool: .text, points: [point], color: self.canvas.ink, width: self.canvas.lineWidth, text: input.stringValue)
-            self.capture.document.commit(self.capture.document.annotations + [mark]); self.refresh()
-        }
-        alert.window.initialFirstResponder = input
-        alert.window.makeFirstResponder(input)
-    }
+    @objc private func fit() { canvas.finishText(); fitMode = true; updateCanvas() }
+    @objc private func zoomIn() { canvas.finishText(); fitMode = false; canvas.scale = min(4, canvas.scale * 1.25); updateCanvas() }
+    @objc private func zoomOut() { canvas.finishText(); fitMode = false; canvas.scale = max(0.02, canvas.scale / 1.25); updateCanvas() }
+    @objc private func closeEditor() { close() }
     @objc private func copyAndClose() { if copyImage() { close() } }
     @discardableResult private func copyImage() -> Bool {
+        canvas.finishText()
         guard let data = ImageRenderer.png(base: capture.image, annotations: capture.document.annotations) else { showError("画像を合成できませんでした。"); return false }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
+        pasteboard.setString("Paratool", forType: ClipboardWatcher.exportMarker)
         guard pasteboard.setData(data, forType: .png) else { showError("クリップボードへコピーできませんでした。"); return false }
         if let image = NSImage(data: data), let tiff = image.tiffRepresentation { pasteboard.setData(tiff, forType: .tiff) }
         return true
     }
     @objc private func savePNG() {
+        canvas.finishText()
         guard let window else { return }
         let panel = NSSavePanel(); panel.allowedContentTypes = [.png]
         panel.nameFieldStringValue = capture.url.deletingPathExtension().lastPathComponent + "-annotated.png"
@@ -214,6 +224,7 @@ final class EditorController: NSWindowController, NSWindowDelegate {
     }
     private func handleShortcut(_ event: NSEvent) -> Bool {
         guard event.modifierFlags.contains(.command) else { return false }
+        if canvas.isEditingText, !["s", "w", "\r"].contains(event.charactersIgnoringModifiers?.lowercased() ?? "") { return false }
         switch event.charactersIgnoringModifiers?.lowercased() {
         case "z": event.modifierFlags.contains(.shift) ? redoEdit() : undoEdit()
         case "s": savePNG()

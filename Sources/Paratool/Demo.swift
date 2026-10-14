@@ -34,6 +34,9 @@ enum Demo {
     }
     static func annotate(_ capture: Capture) {
         let marks: [Annotation] = [
+            Annotation(tool: .highlight, points: [CGPoint(x: 58, y: 110), CGPoint(x: 470, y: 158)], color: .init(red: 1, green: 0.79, blue: 0.25, alpha: 0.5)),
+            Annotation(tool: .mosaic, points: [CGPoint(x: 80, y: 550), CGPoint(x: 285, y: 584)], width: 5),
+            Annotation(tool: .tag, points: [CGPoint(x: 20, y: 474)], color: InkColor.palette[3], width: 4, text: "1"),
             Annotation(tool: .rectangle, points: [CGPoint(x: 426, y: 216), CGPoint(x: 776, y: 370)], color: InkColor.palette[3], width: 4),
             Annotation(tool: .arrow, points: [CGPoint(x: 850, y: 168), CGPoint(x: 732, y: 240)], color: InkColor.palette[0], width: 5),
             Annotation(tool: .text, points: [CGPoint(x: 824, y: 116)], color: InkColor.palette[0], width: 4, text: "ここを確認！")
@@ -60,6 +63,18 @@ enum SmokeTest {
         do { try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true) }
         catch { fail("temporary folder: \(error)") }
         let data = NSBitmapImageRep(cgImage: Demo.image()).representation(using: .png, properties: [:])!
+        let pasteboard = NSPasteboard(name: .init("app.paratool.smoke-\(UUID().uuidString)"))
+        pasteboard.clearContents()
+        let clipboard = ClipboardWatcher(pasteboard: pasteboard)
+        var clipboardCount = 0
+        clipboard.onCapture = { _ in clipboardCount += 1 }
+        // A real copy declares a new pasteboard item before supplying its bytes.
+        pasteboard.clearContents(); pasteboard.setData(data, forType: .png); clipboard.poll(); clipboard.poll()
+        guard clipboardCount == 1 else { fail("clipboard image import / deduplication: count=\(clipboardCount), types=\(pasteboard.types ?? [])") }
+        pasteboard.clearContents(); pasteboard.setString("Paratool", forType: ClipboardWatcher.exportMarker)
+        pasteboard.setData(data, forType: .png); clipboard.poll()
+        guard clipboardCount == 1 else { fail("own clipboard export imported again") }
+        pasteboard.releaseGlobally()
         let metadata = try! PropertyListSerialization.data(fromPropertyList: true, format: .binary, options: 0)
         func write(_ name: String, screenshot: Bool) {
             let url = folder.appendingPathComponent(name)
@@ -86,6 +101,18 @@ enum SmokeTest {
             guard let capture = app.shelf.model.captures.first else { fail("missing capture") }
             Demo.annotate(capture); app.openEditor(capture)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                guard let editorView = NSApp.windows.first(where: { $0.title.hasPrefix("Paratool —") })?.contentView,
+                      let canvas = findCanvas(in: editorView) else { fail("canvas missing") }
+                let originalCount = capture.document.annotations.count
+                canvas.beginText(at: CGPoint(x: 500, y: 1300))
+                guard let input = canvas.textView else { fail("inline text editor missing") }
+                input.string = "画像に直接入力"
+                canvas.finishText()
+                guard capture.document.annotations.count == originalCount + 1, let text = capture.document.annotations.last, text.text == "画像に直接入力" else { fail("inline text commit") }
+                canvas.beginText(at: text.points[0], existing: text)
+                canvas.textView?.string = "変更を取り消す"
+                canvas.finishText(cancel: true)
+                guard capture.document.annotations.last?.text == "画像に直接入力", capture.document.annotations.count == originalCount + 1 else { fail("inline text cancel") }
                 let output = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("dist/verification", isDirectory: true)
                 do {
                     try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
@@ -99,11 +126,16 @@ enum SmokeTest {
                     }
                     try FileManager.default.removeItem(at: folder)
                 } catch { fail("export: \(error)") }
-                print("SMOKE PASS: metadata detection, baseline exclusion, ordinary image exclusion, 4 captures → 3 thumbnails, editor and PNG export")
+                print("SMOKE PASS: screenshot metadata, baseline/ordinary image exclusion, 4 → 3 thumbnails, clipboard import/self-copy exclusion, inline text commit/cancel, editor and PNG export")
                 fflush(stdout)
                 NSApp.terminate(nil)
             }
         }
+    }
+    private static func findCanvas(in view: NSView) -> AnnotationCanvas? {
+        if let canvas = view as? AnnotationCanvas { return canvas }
+        for child in view.subviews { if let canvas = findCanvas(in: child) { return canvas } }
+        return nil
     }
     private static func fail(_ message: String) -> Never { fputs("SMOKE FAIL: \(message)\n", stderr); exit(1) }
 }
