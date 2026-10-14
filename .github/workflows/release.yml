@@ -1,0 +1,84 @@
+name: Draft macOS release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Release build (${{ matrix.arch }})
+    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Test
+        run: ./scripts/test.sh
+      - name: Build release archive
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          APP_BUILD: ${{ github.run_number }}
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          export APP_VERSION="${RELEASE_TAG#v}"
+          ./scripts/package-release.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-${{ matrix.arch }}
+          path: dist/Paratool-*.zip
+          if-no-files-found: error
+
+  draft:
+    name: Attach downloads to release draft
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: release-assets
+      - name: Generate checksums
+        working-directory: release-assets
+        run: sha256sum Paratool-*.zip > SHA256SUMS.txt
+      - name: Create or update draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --json isDraft > release-state.json 2>/dev/null; then
+            if ! jq -e '.isDraft == true' release-state.json >/dev/null; then
+              echo 'This release is already published; create a new version tag instead.' >&2
+              exit 1
+            fi
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft \
+              --title "Paratool $RELEASE_TAG" --notes-file docs/release-notes.md
+          fi
+          gh release upload "$RELEASE_TAG" release-assets/*.zip release-assets/SHA256SUMS.txt --clobber
