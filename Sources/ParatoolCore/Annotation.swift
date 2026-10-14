@@ -101,6 +101,7 @@ public struct Annotation: Identifiable, Equatable {
 
 public final class AnnotationDocument {
     public private(set) var annotations: [Annotation] = []
+    public var onChange: (() -> Void)?
     private var past: [[Annotation]] = []
     private var future: [[Annotation]] = []
     public init() {}
@@ -111,14 +112,17 @@ public final class AnnotationDocument {
         past.append(annotations)
         if past.count > 100 { past.removeFirst() }
         annotations = value; future.removeAll()
+        onChange?()
     }
     public func undo() {
         guard let previous = past.popLast() else { return }
         future.append(annotations); annotations = previous
+        onChange?()
     }
     public func redo() {
         guard let next = future.popLast() else { return }
         past.append(annotations); annotations = next
+        onChange?()
     }
 }
 

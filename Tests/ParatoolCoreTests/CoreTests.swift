@@ -3,6 +3,40 @@ import AppKit
 @testable import ParatoolCore
 
 final class CoreTests: XCTestCase {
+    func testDragExportIsPersistentAnnotatedAndImmutable() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let context = CGContext(data: nil, width: 64, height: 48, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        let base = try XCTUnwrap(context.makeImage())
+        let first = try DragExport.prepare(base: base, annotations: [], name: "日本語 screenshot.png", directory: folder)
+        XCTAssertEqual(try Data(contentsOf: first.url), first.png)
+        XCTAssertEqual(try DragExport.prepare(base: base, annotations: [], name: "日本語 screenshot.png", directory: folder).url, first.url)
+        let mark = Annotation(tool: .redact, points: [.zero, CGPoint(x: 30, y: 30)], color: .init(red: 1, green: 0, blue: 0))
+        let edited = try DragExport.prepare(base: base, annotations: [mark], name: "日本語 screenshot.png", directory: folder)
+        XCTAssertNotEqual(first.url, edited.url)
+        XCTAssertEqual(try Data(contentsOf: first.url), first.png)
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: edited.png))
+        XCTAssertEqual(bitmap.pixelsWide, 64)
+        XCTAssertEqual(bitmap.pixelsHigh, 48)
+        XCTAssertGreaterThan(try XCTUnwrap(bitmap.colorAt(x: 10, y: 10)).redComponent, 0.9)
+        let item = edited.pasteboardItem()
+        XCTAssertEqual(item.string(forType: .fileURL), edited.url.absoluteString)
+        XCTAssertEqual(item.string(forType: .string), edited.url.path)
+        XCTAssertEqual(item.data(forType: .png), edited.png)
+        XCTAssertThrowsError(try DragExport.prepare(base: base, annotations: [], name: "other", directory: first.url))
+    }
+
+    func testDocumentNotifiesOnlyWhenAnnotationsChange() {
+        let document = AnnotationDocument()
+        var changes = 0
+        document.onChange = { changes += 1 }
+        document.commit([]); document.undo(); document.redo()
+        XCTAssertEqual(changes, 0)
+        document.commit([Annotation(tool: .rectangle, points: [.zero, CGPoint(x: 10, y: 10)])])
+        document.undo(); document.redo()
+        XCTAssertEqual(changes, 3)
+    }
+
     func testShelfKeepsNewestThreeAndDoesNotDuplicate() {
         var history = RecentItems<String>(limit: 3)
         for item in ["a", "b", "c", "d", "c"] { history.insert(item, id: item) }

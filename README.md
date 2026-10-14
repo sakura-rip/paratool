@@ -9,6 +9,10 @@ Mac標準の `⌘⇧4`（Ctrl付きのクリップボード保存も対応）か
 3. サムネイルをクリックし、図形・矢印・ペン・文字・ハイライト・モザイク・番号付きタグ・目隠しを追加します。
 4. 「完了してコピー」でチャットなどに貼り付けるか、「保存」でPNGを書き出します。
 
+左下の画像はそのままドラッグできます。画像を受け付けるチャットやエディタには画像、FinderのフォルダにはPNGファイル、ターミナルや対応するパス入力欄にはファイルパスを渡します。注釈は反映され、Ctrl付き撮影にも対応します。受け取り方はドロップ先アプリに依存します。
+
+ドラッグ用のPNGは `~/Library/Application Support/Paratool/DragExports/` に保持します。後から注釈を変更しても、すでに渡したファイルの内容は変わりません。不要な書き出しはこのフォルダから削除できます（そのファイルを参照するパスは使えなくなります）。
+
 左下は外枠のない画像カードだけを表示します。サムネイルは自動では消えず、4枚目で最も古い表示が外れます。元の画像ファイルは削除しません。履歴と注釈はアプリ終了までメモリに保持します。
 
 macOS標準の右下プレビューを出さない場合は、`⌘⇧5 → オプション → フローティングサムネールを表示` をオフにしてください。このプロジェクトを作成したMacではユーザーの指定でオフに設定済みです。アプリは他のMacの設定を無断で変更しません。
@@ -52,7 +56,7 @@ rm "$HOME/Library/LaunchAgents/app.paratool.login.plist"
 配布用ZIPもローカルで生成できます。
 
 ```sh
-APP_VERSION=0.2.0 ./scripts/package-release.sh
+APP_VERSION=0.3.0 ./scripts/package-release.sh
 ```
 
 GUIスモークテスト（ログイン済みのMacのデスクトップ環境が必要）:
@@ -71,8 +75,8 @@ GUIスモークテスト（ログイン済みのMacのデスクトップ環境�
 - 外部の認証情報は不要です。標準の `GITHUB_TOKEN` を使い、リリース作成ジョブだけに `contents: write` を与えています。
 
 ```sh
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 [Actions](https://github.com/sakura-rip/paratool/actions) が成功したら [Releases](https://github.com/sakura-rip/paratool/releases) の下書きを開き、ダウンロード内容を確認して「Publish release」で公開します。一般利用者には下書きは見えません。

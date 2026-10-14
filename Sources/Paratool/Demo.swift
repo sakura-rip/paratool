@@ -115,6 +115,17 @@ enum SmokeTest {
                 guard capture.document.annotations.last?.text == "画像に直接入力", capture.document.annotations.count == originalCount + 1 else { fail("inline text cancel") }
                 let output = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("dist/verification", isDirectory: true)
                 do {
+                    let exported = try DragExport.prepare(base: capture.image, annotations: capture.document.annotations, name: "Clipboard 日本語.png", directory: folder.appendingPathComponent("drag"))
+                    let dragBoard = NSPasteboard(name: .init("app.paratool.drag-smoke-\(UUID().uuidString)"))
+                    defer { dragBoard.releaseGlobally() }
+                    dragBoard.clearContents()
+                    guard dragBoard.writeObjects([exported.pasteboardItem()]),
+                          let urls = dragBoard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
+                          urls == [exported.url],
+                          dragBoard.string(forType: .string) == exported.url.path,
+                          dragBoard.data(forType: .png) == exported.png,
+                          NSImage(pasteboard: dragBoard) != nil,
+                          try Data(contentsOf: exported.url) == exported.png else { fail("drag file URL / path / image representations") }
                     try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
                     try ImageRenderer.png(base: capture.image, annotations: capture.document.annotations)!.write(to: output.appendingPathComponent("annotated.png"))
                     for (name, view) in [("shelf", app.shelf.panel.contentView), ("editor", NSApp.windows.first(where: { $0.title.hasPrefix("Paratool —") })?.contentView)] {
@@ -126,7 +137,7 @@ enum SmokeTest {
                     }
                     try FileManager.default.removeItem(at: folder)
                 } catch { fail("export: \(error)") }
-                print("SMOKE PASS: screenshot metadata, baseline/ordinary image exclusion, 4 → 3 thumbnails, clipboard import/self-copy exclusion, inline text commit/cancel, editor and PNG export")
+                print("SMOKE PASS: screenshot metadata, baseline/ordinary image exclusion, 4 → 3 thumbnails, clipboard import/self-copy exclusion, inline text commit/cancel, editor and PNG export, drag file URL/path/image roundtrip")
                 fflush(stdout)
                 NSApp.terminate(nil)
             }
