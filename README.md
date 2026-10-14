@@ -34,6 +34,21 @@ Xcode Command Line Tools / Swift 5.9以降が必要です。外部パッケー�
 open dist/Paratool.app
 ```
 
+ローカルのアプリケーションフォルダへインストールし、ログイン時に自動起動する設定:
+
+```sh
+./scripts/install-local.sh --login
+```
+
+`/Applications/Paratool.app` にインストールします（書き込めない場合は `~/Applications`）。自動起動は `~/Library/LaunchAgents/app.paratool.login.plist` で登録します。再起動後はMacへのログイン時に起動します。`--login` を省略するとインストールだけを行います。
+
+自動起動を解除する場合:
+
+```sh
+launchctl bootout "gui/$(id -u)/app.paratool.login"
+rm "$HOME/Library/LaunchAgents/app.paratool.login.plist"
+```
+
 配布用ZIPもローカルで生成できます。
 
 ```sh

@@ -28,7 +28,7 @@ Expected: tests pass, release binary builds, plist is valid, menu-bar app stays 
 
 ## Added GitHub distribution task
 
-- [ ] 7. `.github/workflows/ci.yml` builds/tests on macos-15 (arm64) and macos-15-intel. `.github/workflows/release.yml` builds version tags and attaches ZIPs plus checksums to a draft release. `scripts/package-release.sh` validates architecture and archives the app using ditto; the build script validates version inputs and signatures. Push to the connected repository, verify Actions runs, and prepare the first release draft for review.
+- [x] 7. `.github/workflows/ci.yml` builds/tests on macos-15 (arm64) and macos-15-intel. `.github/workflows/release.yml` builds version tags and attaches ZIPs plus checksums to a draft release. `scripts/package-release.sh` validates architecture and archives the app using ditto; the build script validates version inputs and signatures. Push to the connected repository, verify Actions runs, and prepare the first release draft for review.
 
 ## Local verification results
 
@@ -43,6 +43,13 @@ Expected: tests pass, release binary builds, plist is valid, menu-bar app stays 
 - [x] Highlight, mosaic and numbered tag tools, shared preview/export rendering and tests.
 - [x] Inline text creation, editing and cancellation using NSTextView; larger controls; shelf wrapper removed.
 - [x] GitHub SDK compatibility: replace NSBitmapImageRep.getPixel (Int vs UInt depends on SDK) with direct byte assertions.
-- [ ] Verify v0.2.0 builds and release draft on GitHub after these refinements.
+- [x] Verify v0.2.0 builds and release draft on GitHub after these refinements.
 
 - ローカルGUI統合テスト: 名前付きペーストボードからの取り込み、自身のコピー除外、直接入力の確定・取消が成功。更新後のエディタと外枠なしサムネイルを画像で確認。
+
+## Completed GitHub and installation verification
+
+- v0.2.0 release workflow 38550756689 succeeded on arm64 and x86_64; both archives plus SHA256SUMS are attached to a draft release. main CI 38550747262 also passed.
+- Downloaded both release ZIPs and verified their SHA-256 checksums. Installed the GitHub-built arm64 bundle into `/Applications/Paratool.app` and verified its signature and version 0.2.0.
+- Added and exercised `scripts/install-local.sh --login`. The user LaunchAgent `app.paratool.login` points to the installed bundle, has RunAtLoad=true, and its launcher exited successfully. The installed app process is running.
+- Reboot itself was not performed; launch registration and its immediate successful execution were verified.
